@@ -10,6 +10,8 @@ This module is inspired by:
 __license__ = "MIT License"
 __copyright__ = "Copyright (c) 2019 Piotr Januszewski"
 
+import functools
+
 
 class AttrDict(dict):
     """Defines an attribute dictionary that allows the user to address keys as
@@ -73,3 +75,55 @@ def attrdict_from_yaml(data):
 
     from yaml import safe_load
     return AttrDict(safe_load(data))
+
+
+def lazy_property_with_scope(*args, scope_name=None, **kwargs):
+    """Property decorator on steroids.
+
+    Property decorator which additionally defines TensorFlow variable scope
+    and adds lazy loading.
+
+    This decorator can be used without parentheses if no arguments are provided.
+
+    Args:
+        scope_name (str): The scope name. If `None` wrapped function's name is
+                          used as the scope name.
+        *args: Passed to `tf.variable_scope`.
+        **kwargs: Passed to `tf.variable_scope`.
+    """
+
+    def define_scope(function, scope_name, *args, **kwargs):
+        """Decorator for properties that define TensorFlow operations.
+
+        The wrapped function will only be executed once. Subsequent calls to
+        it will directly return the result so that operations are added to
+        the graph only once. The operations added by the function live within
+        a tf.variable_scope(). If this decorator is used with arguments, they
+        will be forwarded to the variable scope. The scope name defaults to
+        the name of the wrapped function.
+
+        Args:
+            scope_name (str): The scope name. If `None` wrapped function's
+                              name is used as the scope name.
+            *args: Passed to `tf.variable_scope`.
+            **kwargs: Passed to `tf.variable_scope`.
+        """
+
+        from tensorflow import variable_scope
+
+        attribute = '_cache_' + function.__name__
+        name = scope_name or function.__name__
+
+        @property
+        @functools.wraps(function)
+        def decorator(self):
+            if not hasattr(self, attribute):
+                with variable_scope(name, *args, **kwargs):
+                    setattr(self, attribute, function(self))
+            return getattr(self, attribute)
+        return decorator
+
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return define_scope(args[0], scope_name=scope_name)
+    return lambda function: define_scope(function, scope_name=scope_name,
+                                         *args, **kwargs)
