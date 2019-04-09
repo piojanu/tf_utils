@@ -51,6 +51,8 @@ class AttrDict(dict):
             except AttributeError:
                 self[key] = value
 
+        return self
+
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
 
