@@ -88,7 +88,7 @@ def lazy_property_with_scope(*args, scope_name=None, **kwargs):
     This decorator can be used without parentheses if no arguments are provided.
 
     Args:
-        scope_name (str): The scope name. If `None` wrapped function's name is
+        scope_name (str): The scope name. If `None` decorated function's name is
                           used as the scope name.
         *args: Passed to `tf.variable_scope`.
         **kwargs: Passed to `tf.variable_scope`.
@@ -97,15 +97,15 @@ def lazy_property_with_scope(*args, scope_name=None, **kwargs):
     def define_scope(function, scope_name, *args, **kwargs):
         """Decorator for properties that define TensorFlow operations.
 
-        The wrapped function will only be executed once. Subsequent calls to
+        The decorated function will only be executed once. Subsequent calls to
         it will directly return the result so that operations are added to
         the graph only once. The operations added by the function live within
         a tf.variable_scope(). If this decorator is used with arguments, they
         will be forwarded to the variable scope. The scope name defaults to
-        the name of the wrapped function.
+        the name of the decorated function.
 
         Args:
-            scope_name (str): The scope name. If `None` wrapped function's
+            scope_name (str): The scope name. If `None` decorated function's
                               name is used as the scope name.
             *args: Passed to `tf.variable_scope`.
             **kwargs: Passed to `tf.variable_scope`.
@@ -129,3 +129,26 @@ def lazy_property_with_scope(*args, scope_name=None, **kwargs):
         return define_scope(args[0], scope_name=scope_name)
     return lambda function: define_scope(function, scope_name=scope_name,
                                          *args, **kwargs)
+
+def share_variables(function):
+    """Decorator for methods that define TensorFlow operations.
+    
+    The decorated method is wrapped with tf.make_template() so that it does
+    variable sharing. The tf.make_template() will only be executed once.
+    Subsequent calls to the decorated function will reuse the template so that
+    operations are added to the graph only once. 
+    """
+
+    from tensorflow import make_template
+
+    attribute = '_cache_' + function.__name__
+
+    @functools.wraps(function)
+    def decorator(self, *args, **kwargs):
+        if not hasattr(self, attribute):
+            setattr(self, attribute,
+                    make_template(function.__name__,
+                                  function,
+                                  create_scope_now_=True))
+        return getattr(self, attribute)(self, *args, **kwargs)
+    return decorator
